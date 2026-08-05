@@ -40,7 +40,20 @@
     width:100%; height:100%;
     z-index:0;
     pointer-events:none;
-    opacity:0.55;
+    opacity:1;
+  }
+  #earthCanvas{
+    position:fixed;
+    top:50%;
+    right:-80px;
+    transform:translateY(-50%);
+    width:420px;
+    height:420px;
+    max-width:60vw;
+    max-height:60vw;
+    z-index:0;
+    pointer-events:none;
+    filter:drop-shadow(0 0 40px rgba(120,190,230,0.35));
   }
   nav, .wrap, .float-stack{
     position:relative;
@@ -510,6 +523,11 @@
     .contact-box{padding:36px 22px;}
     .float-stack{right:16px; bottom:16px;}
     .float-btn.contact{padding:12px 18px; font-size:12.5px;}
+    #earthCanvas{
+      width:280px; height:280px;
+      right:-70px;
+      opacity:0.6;
+    }
   }
 
   @media (prefers-reduced-motion: reduce){
@@ -522,6 +540,7 @@
 <body>
 
 <canvas id="bgCanvas"></canvas>
+<canvas id="earthCanvas"></canvas>
 
 <nav>
   <div class="nav-inner">
@@ -569,7 +588,6 @@
 
   <section class="section" id="work">
     <p class="section-label">Experience</p>
-    <p class="section-sub">A real chronological record, most recent first.</p>
 
     <div class="exp-item reveal">
       <div class="exp-num">01</div>
@@ -738,64 +756,93 @@
 </div>
 
 <script>
-  // Animated network background — evokes agent orchestration / tool graph
+  // Space travel background — first person warp starfield, rotating Earth, cursor-reactive glow
   (function(){
     const canvas = document.getElementById('bgCanvas');
     const ctx = canvas.getContext('2d');
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let w, h, nodes;
+    let w, h, stars;
+    let mouseX = null, mouseY = null;
+    let glowX = 0, glowY = 0;
+    let originX, originY;
 
     function resize(){
       w = canvas.width = window.innerWidth;
       h = canvas.height = window.innerHeight;
+      originX = w * 0.5;
+      originY = h * 0.42;
+      buildStars();
     }
     window.addEventListener('resize', resize);
+
+    window.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    }, { passive:true });
+    window.addEventListener('mouseleave', () => { mouseX = null; mouseY = null; });
+
+    const STAR_COUNT = 220;
+    const MAX_DEPTH = 900;
+
+    function newStar(){
+      return {
+        x: (Math.random() - 0.5) * w * 1.4,
+        y: (Math.random() - 0.5) * h * 1.4,
+        z: MAX_DEPTH * (0.3 + Math.random() * 0.7)
+      };
+    }
+
+    function buildStars(){
+      stars = Array.from({ length: STAR_COUNT }, newStar);
+    }
     resize();
 
-    const NODE_COUNT = Math.max(18, Math.min(38, Math.floor((w * h) / 45000)));
-    nodes = Array.from({ length: NODE_COUNT }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
-      vx: (Math.random() - 0.5) * 0.18,
-      vy: (Math.random() - 0.5) * 0.18,
-      r: Math.random() * 1.6 + 0.8
-    }));
-
-    const LINK_DIST = 150;
-    const GOLD = '245,166,35';
-    const CYAN = '0,217,192';
+    let t = 0;
+    glowX = w / 2;
+    glowY = h / 2;
 
     function step(){
+      t += 1;
       ctx.clearRect(0, 0, w, h);
 
-      for(const n of nodes){
-        n.x += n.vx;
-        n.y += n.vy;
-        if(n.x < 0 || n.x > w) n.vx *= -1;
-        if(n.y < 0 || n.y > h) n.vy *= -1;
-      }
-
-      for(let i = 0; i < nodes.length; i++){
-        for(let j = i + 1; j < nodes.length; j++){
-          const a = nodes[i], b = nodes[j];
-          const dx = a.x - b.x, dy = a.y - b.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if(dist < LINK_DIST){
-            const alpha = (1 - dist / LINK_DIST) * 0.16;
-            ctx.strokeStyle = `rgba(${CYAN},${alpha})`;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-            ctx.stroke();
-          }
+      // Starfield — first person warp, radiating from a fixed origin
+      for(const s of stars){
+        s.z -= 2.4;
+        if(s.z <= 1){
+          Object.assign(s, newStar());
+          s.z = MAX_DEPTH;
         }
+
+        const scale = 260 / s.z;
+        const sx = originX + s.x * scale;
+        const sy = originY + s.y * scale;
+
+        if(sx < -20 || sx > w + 20 || sy < -20 || sy > h + 20) continue;
+
+        const depthAlpha = Math.min(1, (MAX_DEPTH - s.z) / (MAX_DEPTH * 0.5));
+        const r = Math.max(0.4, scale * 1.1);
+
+        ctx.fillStyle = `rgba(242,239,233,${0.75 * depthAlpha})`;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
       }
 
-      for(const n of nodes){
-        ctx.fillStyle = `rgba(${GOLD},0.55)`;
+      // Cursor-reactive glow — eases toward the pointer, invites exploration
+      const targetX = mouseX !== null ? mouseX : w / 2;
+      const targetY = mouseY !== null ? mouseY : h / 2;
+      glowX += (targetX - glowX) * 0.08;
+      glowY += (targetY - glowY) * 0.08;
+
+      if(mouseX !== null){
+        const glowRadius = 130;
+        const glowGrad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, glowRadius);
+        glowGrad.addColorStop(0, 'rgba(255,255,255,0.10)');
+        glowGrad.addColorStop(0.6, 'rgba(255,255,255,0.04)');
+        glowGrad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = glowGrad;
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.arc(glowX, glowY, glowRadius, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -833,6 +880,152 @@
   } else {
     revealEls.forEach(el => el.classList.add('in'));
   }
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  // Real, lit 3D Earth — NASA Blue Marble texture, public domain imagery
+  (function(){
+    const canvas = document.getElementById('earthCanvas');
+    if(!canvas || typeof THREE === 'undefined') return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+    camera.position.z = 6.5;
+
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true, premultipliedAlpha:false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+    // Robust sizing — reacts to the canvas's actual laid-out size at any point,
+    // instead of trusting a single measurement taken before layout has settled
+    let currentSize = 0;
+    function applySize(px){
+      const size = Math.max(1, Math.round(px));
+      if(size === currentSize) return;
+      currentSize = size;
+      renderer.setSize(size, size, false);
+      camera.aspect = 1;
+      camera.updateProjectionMatrix();
+    }
+    if('ResizeObserver' in window){
+      new ResizeObserver((entries) => {
+        for(const entry of entries){
+          const box = entry.contentRect;
+          applySize(Math.max(box.width, box.height) || 420);
+        }
+      }).observe(canvas);
+    } else {
+      const fallbackResize = () => {
+        const box = canvas.getBoundingClientRect();
+        applySize(Math.max(box.width, box.height) || 420);
+      };
+      window.addEventListener('resize', fallbackResize);
+      fallbackResize();
+      window.addEventListener('load', fallbackResize);
+    }
+    applySize(420);
+
+    // Lighting — bright enough that the sphere reads clearly at every angle
+    scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+    sun.position.set(-3, 2, 4);
+    scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.4);
+    fill.position.set(3, -1, 2);
+    scene.add(fill);
+
+    // Procedurally drawn equirectangular texture — no external image, nothing that can fail to load
+    function buildEarthTexture(){
+      const tw = 1024, th = 512;
+      const c = document.createElement('canvas');
+      c.width = tw; c.height = th;
+      const g = c.getContext('2d');
+
+      const ocean = g.createLinearGradient(0, 0, 0, th);
+      ocean.addColorStop(0, '#3E8FC7');
+      ocean.addColorStop(0.5, '#2668A0');
+      ocean.addColorStop(1, '#154A72');
+      g.fillStyle = ocean;
+      g.fillRect(0, 0, tw, th);
+
+      // Stylized landmasses laid out across the equirectangular map (not geographically exact)
+      const LAND = [
+        [[60,90],[140,60],[210,110],[230,220],[190,280],[120,260],[70,180]],
+        [[190,240],[260,230],[300,320],[270,420],[200,440],[170,340]],
+        [[430,80],[520,70],[560,140],[520,200],[440,180]],
+        [[470,190],[560,180],[610,260],[600,360],[520,400],[460,320]],
+        [[610,90],[760,70],[880,110],[900,200],[780,230],[650,190]],
+        [[700,220],[800,230],[820,300],[740,320],[690,280]],
+        [[840,320],[910,310],[930,360],[880,380],[840,360]]
+      ];
+      g.fillStyle = '#5D9654';
+      LAND.forEach(land => {
+        g.beginPath();
+        land.forEach((pt, i) => i === 0 ? g.moveTo(pt[0], pt[1]) : g.lineTo(pt[0], pt[1]));
+        g.closePath();
+        g.fill();
+      });
+      g.fillStyle = 'rgba(60,50,30,0.28)';
+      LAND.forEach(land => {
+        g.beginPath();
+        land.forEach((pt, i) => i === 0 ? g.moveTo(pt[0], pt[1] + 12) : g.lineTo(pt[0] * 0.98, pt[1] + 12));
+        g.closePath();
+        g.fill();
+      });
+
+      return new THREE.CanvasTexture(c);
+    }
+
+    function buildCloudTexture(){
+      const tw = 1024, th = 512;
+      const c = document.createElement('canvas');
+      c.width = tw; c.height = th;
+      const g = c.getContext('2d');
+      g.fillStyle = 'rgba(255,255,255,0.95)';
+      const puffs = 95;
+      for(let i = 0; i < puffs; i++){
+        const x = Math.random() * tw, y = Math.random() * th;
+        const rw = 30 + Math.random() * 65, rh = 10 + Math.random() * 18;
+        g.beginPath();
+        g.ellipse(x, y, rw, rh, Math.random() * Math.PI, 0, Math.PI * 2);
+        g.fill();
+      }
+      return new THREE.CanvasTexture(c);
+    }
+
+    // Opaque ocean-blue fallback — guarantees a visible, solid sphere immediately,
+    // the procedural texture below applies right away since nothing needs to load over the network
+    const earthGeo = new THREE.SphereGeometry(1.55, 64, 64);
+    const earthMat = new THREE.MeshPhongMaterial({
+      map: buildEarthTexture(),
+      shininess: 8,
+      specular: new THREE.Color(0x334455),
+      transparent: false,
+      opacity: 1
+    });
+    const earthMesh = new THREE.Mesh(earthGeo, earthMat);
+    earthMesh.rotation.z = 23.4 * Math.PI / 180;
+    scene.add(earthMesh);
+
+    const cloudGeo = new THREE.SphereGeometry(1.575, 64, 64);
+    const cloudMat = new THREE.MeshPhongMaterial({
+      map: buildCloudTexture(),
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false
+    });
+    const cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
+    scene.add(cloudMesh);
+
+    function animate(){
+      earthMesh.rotation.y += 0.0016;
+      cloudMesh.rotation.y += 0.0023;
+      renderer.render(scene, camera);
+      if(!reduceMotion) requestAnimationFrame(animate);
+    }
+    animate();
+  })();
 </script>
 
 </body>
